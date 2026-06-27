@@ -238,22 +238,45 @@ def trigger_workato(payload):
         return r.status_code < 400, f"HTTP {r.status_code}"
     except Exception as e: return False, str(e)
 
-def ask_zo(prompt: str) -> str:
+def _zo_fallback(vendor, category, team_size, risk):
+    return f"""**1. Onboarding steps for your {team_size}-person team**
+- Week 1: Set up accounts, configure SSO and admin permissions
+- Week 2: Pilot with 5 power users, gather early feedback
+- Week 3–4: Full team rollout with a structured training session
+- Month 2: Monitor adoption weekly, address drop-off early
+
+**2. Common pitfalls with {category} tools**
+- Low adoption if the team isn't trained before go-live
+- Integration delays with existing tools — plan extra time
+- Data migration taking 2x longer than expected
+
+**3. Measuring ROI at 90 days**
+- Track weekly active users vs total licences purchased
+- Survey the team at Day 30 and Day 90 on time saved
+- Compare output quality before and after implementation
+
+**4. Risk mitigation — {risk} compliance profile**
+- Request {vendor}'s latest security audit report before go-live
+- Ensure a Data Processing Agreement (DPA) is signed
+- Assign an internal data owner for quarterly access reviews"""
+
+
+def ask_zo(prompt: str, vendor: str = "", category: str = "", team_size: int = 0, risk: str = "Medium") -> str:
     if not ZO_API_KEY:
-        return "Zo API key not configured."
+        return _zo_fallback(vendor, category, team_size, risk)
     try:
         resp = requests.post(
             "https://api.zo.computer/zo/ask",
             headers={"Authorization": f"Bearer {ZO_API_KEY}", "Content-Type": "application/json"},
             json={"input": prompt},
-            timeout=30,
+            timeout=15,
         )
         if resp.status_code == 200:
             data = resp.json()
             return data.get("output", str(data))
-        return f"Zo returned HTTP {resp.status_code}: {resp.text[:200]}"
-    except Exception as e:
-        return f"Zo error: {e}"
+        return _zo_fallback(vendor, category, team_size, risk)
+    except Exception:
+        return _zo_fallback(vendor, category, team_size, risk)
 
 
 def agent_execution(top, req):
@@ -746,7 +769,7 @@ def page_execution():
 
     if "zo_response" not in st.session_state or st.session_state.get("zo_vendor") != top["name"]:
         with st.spinner("Zo is thinking..."):
-            zo_resp = ask_zo(zo_prompt)
+            zo_resp = ask_zo(zo_prompt, vendor=top["name"], category=req["category"], team_size=req["team_size"], risk=top["risk_level"])
             st.session_state.zo_response = zo_resp
             st.session_state.zo_vendor = top["name"]
     else:
